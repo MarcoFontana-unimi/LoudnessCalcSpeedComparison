@@ -411,7 +411,7 @@ void sequentialOverheadCalc(const char* infilename, float* out, int index)
     }
 
     int nOfSegments = sfinfo.frames * sfinfo.channels / samplesPerWindow;
-    float* squaredSegments = (float*)malloc(sizeof(float) * nOfSegments * sfinfo.channels);
+    //float* squaredSegments = (float*)malloc(sizeof(float) * nOfSegments * sfinfo.channels);
 
     int segNumber = 0;
     while ((readcount = (int)sf_read_float(infile, sampleBuffer, samplesPerWindow)) == samplesPerWindow)
@@ -423,6 +423,7 @@ void sequentialOverheadCalc(const char* infilename, float* out, int index)
         segNumber++;
     }
     free(sampleBuffer);
+    sf_close(infile);
 
     /*int nOfWindows = nOfSegments - 3;
     float* squaredMeanByChannel = (float*)malloc(sizeof(float) * nOfWindows * sfinfo.channels);
@@ -490,7 +491,7 @@ void sequentialOverheadCalc(const char* infilename, float* out, int index)
 
 }
 
-void SequentialLoudnessCalc(int nOfFiles, FILE* fp, char* str, const char* folder)
+float* SequentialLoudnessCalc(int nOfFiles, FILE* fp, char* str, const char* folder)
 {
 
     printf("Analyzing with sequential alghoritm please wait...\n");
@@ -535,12 +536,63 @@ void SequentialLoudnessCalc(int nOfFiles, FILE* fp, char* str, const char* folde
     }
     rewind(fp);
 
+    free(filesLoudness);
+
     clock_t endOverhead = clock();
     float elapsedOverhead = (float)(endOverhead - startOverhead) / CLOCKS_PER_SEC;
     printf("\nTime measured: %.3f seconds.\n", elapsed);
-    printf("Sequential overhead: %.3f seconds.\n", elapsedOverhead);
+    printf("Sequential overhead: %.3f seconds.\n\n", elapsedOverhead);
 
-    float elapsedClean = elapsed - elapsedOverhead;
+    //float elapsedClean = elapsed - elapsedOverhead;
 
-    printf("Sequential Time without overhead: %.3f seconds.\n\n", elapsedClean);
+    //printf("Sequential Time without overhead: %.3f seconds.\n\n", elapsedClean);
+
+    static float times[2];
+    times[0] = elapsed;
+    times[1] = elapsedOverhead;
+
+    return times;
+}
+
+
+bool sequentialTestcompliance(int nOfFiles, FILE* fp, char* str, const char* folder, float* expectedResults)
+{
+
+    printf("Testing sequential compliance to ITU_R_BS._1770._4 ...    ");
+
+    float* filesLoudness = (float*)malloc(sizeof(float) * nOfFiles);
+    int fileNumber = 0;
+
+    while (EOF != fscanf(fp, "%[^\n]\n", str))
+    {
+        char* path = (char*)malloc(strlen(folder) + strlen(str) + 1);
+        strcpy(path, folder);
+        strcat(path, str);
+        //printf("%s \n", str);
+
+        /*char *path = (char *) malloc(strlen(folder) + strlen(audioNames[i]) + 1);
+        strcpy(path, folder);
+        strcat(path, audioNames[i]);*/
+        calcLoudness(path, filesLoudness, fileNumber);
+        free(path);
+        fileNumber++;
+    }
+    rewind(fp);
+
+    bool isCorrect = true;
+    for (int i = 0; i < nOfFiles; i++)
+    {
+        if (fabs(filesLoudness[i] - expectedResults[i]) > 0.1f)
+        {
+            isCorrect = false;
+        }
+    }
+
+    printf("%s", isCorrect ? "OK\n\n" : "Not compliant\n\n");
+
+
+    free(filesLoudness);
+
+    return isCorrect;
+
 }

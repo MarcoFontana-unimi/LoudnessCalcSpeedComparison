@@ -650,7 +650,7 @@ void* CudaOverheadCalc(void* arguments)
     return NULL;
 }
 
-void CudaLoudnessCalc(int nOfFiles, FILE* fp, char* str)
+float* CudaLoudnessCalc(int nOfFiles, FILE* fp, char* str)
 {
     //one cpu thread for each file
     pthread_t* ThHandle = (pthread_t*)malloc(sizeof(pthread_t) * nOfFiles);
@@ -765,12 +765,109 @@ void CudaLoudnessCalc(int nOfFiles, FILE* fp, char* str)
 
     float elapsedOverhead = (float)(endOverhead - startOverhead) / CLOCKS_PER_SEC;
     printf("\nTime measured: %.3f seconds.\n", elapsed);
-    printf("CUDA overhead: %.3f seconds.\n", elapsedOverhead);
+    printf("CUDA overhead: %.3f seconds.\n\n", elapsedOverhead);
 
-    float elapsedClean = elapsed - elapsedOverhead;
+    //float elapsedClean = elapsed - elapsedOverhead;
 
-    printf("CUDA Time without overhead: %.3f seconds.\n\n", elapsedClean);
+    //printf("CUDA Time without overhead: %.3f seconds.\n\n", elapsedClean);
 
     free(audioFilePointers);
     free(ThHandle);
+    free(stream);
+    free(args);
+    cudaFree(filesLoudness);
+
+    static float times[2];
+    times[0] = elapsed;
+    times[1] = elapsedOverhead;
+
+    return times;
+}
+
+bool cudaTestcompliance(int nOfFiles, FILE* fp, char* str, float* expectedResults)
+{
+    //one cpu thread for each file
+    pthread_t* ThHandle = (pthread_t*)malloc(sizeof(pthread_t) * nOfFiles);
+    int ThErr;
+
+    //array with final results
+    float* filesLoudness;
+    cudaMallocManaged(&filesLoudness, sizeof(float) * nOfFiles);
+
+    //helper array for some kernels
+    int* counters;
+    cudaMalloc(&counters, sizeof(int) * nOfFiles);
+
+    //init non blocking streams for each file
+    cudaStream_t* stream = (cudaStream_t*)malloc(sizeof(cudaStream_t) * nOfFiles);
+    for (int i = 0; i < nOfFiles; i++)
+    {
+        cudaStreamCreateWithFlags(&stream[i], cudaStreamNonBlocking);
+    }
+
+
+    float** audioFilePointers = (float**)malloc(sizeof(float*) * nOfFiles);
+
+    printf("Testing CUDA compliance to ITU_R_BS._1770._4 ...    ");
+
+    //args for each cpu thread
+    struct arg_struct* args = (arg_struct*)malloc(sizeof(arg_struct) * nOfFiles);
+
+    int fileIndex = 0;
+
+    while (EOF != fscanf(fp, "%[^\n]\n", str))
+    {
+        args[fileIndex].audioPointer = audioFilePointers[fileIndex];
+        args[fileIndex].out = filesLoudness;
+        strcpy(args[fileIndex].infilename, str);
+        args[fileIndex].counter = counters;
+        args[fileIndex].index = fileIndex;
+        args[fileIndex].stream = stream;
+        args[fileIndex].nOfFiles = nOfFiles;
+
+        ThErr = pthread_create(&ThHandle[fileIndex], NULL, readFileAndLaunchThreads, (void*)&args[fileIndex]);
+        if (ThErr != 0) {
+            printf("\nThread Creation Error %d. Exiting abruptly... \n", ThErr);
+            exit(EXIT_FAILURE);
+        }
+
+        fileIndex++;
+    }
+
+    //wait for all cpu threads to complete
+    for (int i = 0; i < nOfFiles; i++) {
+        pthread_join(ThHandle[i], NULL);
+    }
+    rewind(fp);
+
+    //wait for all kernels to complete
+    cudaDeviceSynchronize();
+
+    //cleanup memory
+    cudaFree(counters);
+    for (int i = 0; i < nOfFiles; i++)
+    {
+        cudaStreamDestroy(stream[i]);
+    }
+
+    bool isCorrect = true;
+    for (int i = 0; i < nOfFiles; i++)
+    {
+        if (fabs(filesLoudness[i] - expectedResults[i]) > 0.1f)
+        {
+            isCorrect = false;
+        }
+    }
+
+    printf("%s", isCorrect ? "OK\n\n" : "Not compliant\n\n");
+
+
+    free(audioFilePointers);
+    free(ThHandle);
+    free(stream);
+    free(args);
+    cudaFree(filesLoudness);
+
+    return isCorrect;
+
 }
