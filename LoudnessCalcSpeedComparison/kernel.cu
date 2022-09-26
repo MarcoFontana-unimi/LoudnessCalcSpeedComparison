@@ -16,7 +16,7 @@ float** elapsedTimes(FILE* fp, char* str, const char* folder)
     nOfFiles++;
     rewind(fp);
 
-
+    //arrays with average time for execution adn overhead
     static float cudaAverageTimes[2] = { 0.0f, 0.0f };
     static float sequentialAverageTimes[2] = { 0.0f, 0.0f };
 
@@ -112,6 +112,7 @@ void testCompliance(char* str, const char* folder)
     nOfTestFiles++;
     rewind(audioTestList);
 
+    //files and results for compliance testing taken from https://tech.ebu.ch/loudness
     float expectedResults[9] = { -23.0f, -33.0f, -23.0f, -23.0f, -23.0f, -23.0f, -23.0f, -23.0f, -23.0f };
     sequentialTestcompliance(nOfTestFiles, audioTestList, str, folder, expectedResults);
     cudaTestcompliance(nOfTestFiles, audioTestList, str, expectedResults);

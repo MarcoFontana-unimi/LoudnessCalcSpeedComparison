@@ -256,7 +256,7 @@ __device__ float gatingLoudnessArraySum(float* newBlockLoudness, int length, int
     return -0.691 + 10 * log10(res / counter) - 10;
 }
 
-//calc of the relative gate for the loudness as per ITU_R_BS._1770._4 recommendation
+//prepare arrays for the calc of the relative gate for the loudness as per ITU_R_BS._1770._4 recommendation
 __global__ void relativeGateCalcInit(int nWindows, int nChannels, float* blockLoudness,
     float* squaredMeanByChannel, float* newBlockLoudness, int* counter, int index)
 {
@@ -279,7 +279,7 @@ __global__ void relativeGateCalcInit(int nWindows, int nChannels, float* blockLo
 
 }
 
-//calc of the float gated loudness as per ITU_R_BS._1770._4 recommendation
+//prepare arrays for the calc of the double gated loudness as per ITU_R_BS._1770._4 recommendation
 __global__ void gatedLoudnessReductionInit(float* relativeGate, int nWindows, float* blockLoudness, float* newBlockLoudness,
     int* counter, int index)
 {
@@ -297,7 +297,7 @@ __global__ void gatedLoudnessReductionInit(float* relativeGate, int nWindows, fl
     }
 }
 
-//save relative gate value to global mem
+//save relative gate value
 __global__ void relativeGate(float* newBlockLoudness, int length,
     float* out, int index, int* counter)
 {
@@ -387,11 +387,7 @@ void calcLoudness(float* audioFile, float* out, int index, SF_INFO	sfinfo,
         nOfBlocks = ceil(nOfWindows / (MAX_BLOCK_DIM / 2));
     }
 
-    /*
-    *
-    * Pre gating loudness of each 400ms window in LUFS as per ITU_R_BS._1770._4 recommendation.
-    *
-    */
+    //call correct sum kernel based on number of channels
     if (sfinfo.channels > 3 && sfinfo.channels < 6)
     {
         weightedSum3To5Channels << <nOfBlocks, blockDim, 0, stream >> > (sfinfo.channels, squaredMeanByChannel,
@@ -483,6 +479,7 @@ void* readFileAndLaunchThreads(void* arguments)
     int nOfSegments = floor(sfinfo.frames * sfinfo.channels / (float)samplesPerWindow);
     int nOfWindows = nOfSegments - 3;
 
+    //calc the needed memory space on the GPU
     size_t bytesToAlloc = (sizeof(float) * audioLength)
         + (sizeof(float) * nOfSegments * sfinfo.channels)
         + (sizeof(float) * nOfWindows * sfinfo.channels)
@@ -497,6 +494,7 @@ void* readFileAndLaunchThreads(void* arguments)
         return NULL;
     }
 
+    //read file on CPU
     float* audioFileCPU = (float*)malloc(sizeof(float) * audioLength);
     sf_read_float(infile, audioFileCPU, audioLength);
 
@@ -618,27 +616,6 @@ void* CudaOverheadCalc(void* arguments)
     float* audioFileCPU = (float*)malloc(sizeof(float) * audioLength);
     sf_read_float(infile, audioFileCPU, audioLength);
 
-    //wait for device to have enough free memory
-    /*while (freeMem < bytesToAlloc)
-    {
-        SLEEP(1000);
-        cudaMemGetInfo(&freeMem, &totalMem);
-    }
-
-    cudaEvent_t copyDone;
-    cudaEventCreateWithFlags(&copyDone, cudaEventDisableTiming);
-
-    //call async functions to create a correct sequence inside each stream
-    cudaMallocAsync(&args->audioPointer, bytesToAlloc, stream);
-    cudaMemcpyAsync(args->audioPointer, audioFileCPU, sizeof(float) * audioLength,
-        cudaMemcpyHostToDevice, stream);
-    cudaEventRecord(copyDone, stream);
-
-    calcLoudness(args->audioPointer, args->out,
-        args->index, sfinfo, coeffs, stream, args->counter);
-
-    cudaFreeAsync(args->audioPointer, stream);*/
-
     free(path);
     sf_close(infile);
 
@@ -673,8 +650,6 @@ float* CudaLoudnessCalc(int nOfFiles, FILE* fp, char* str)
 
 
     float** audioFilePointers = (float**)malloc(sizeof(float*) * nOfFiles);
-
-    //printf("Analyzing with CUDA please wait...\n");
 
     //args for each cpu thread
     struct arg_struct* args = (arg_struct*)malloc(sizeof(arg_struct) * nOfFiles);
@@ -719,19 +694,9 @@ float* CudaLoudnessCalc(int nOfFiles, FILE* fp, char* str)
         cudaStreamDestroy(stream[i]);
     }
 
-    //print results
-    /*int counter = 0;
-    while (EOF != fscanf(fp, "%[^\n]\n", str))
-    {
-        printf("%s: %f \n", str, filesLoudness[counter]);
-        counter++;
-    }*/
-
     double elapsed = double(end - start) / CLOCKS_PER_SEC;
 
-
-    //printf("Measuring file read overhead for CUDA...\n");
-
+    //test overhead
     fileIndex = 0;
 
     clock_t startOverhead = clock();
@@ -764,12 +729,6 @@ float* CudaLoudnessCalc(int nOfFiles, FILE* fp, char* str)
     clock_t endOverhead = clock();
 
     float elapsedOverhead = (float)(endOverhead - startOverhead) / CLOCKS_PER_SEC;
-    //printf("\nTime measured: %.3f seconds.\n", elapsed);
-    //printf("CUDA overhead: %.3f seconds.\n\n", elapsedOverhead);
-
-    //float elapsedClean = elapsed - elapsedOverhead;
-
-    //printf("CUDA Time without overhead: %.3f seconds.\n\n", elapsedClean);
 
     free(audioFilePointers);
     free(ThHandle);
@@ -777,6 +736,7 @@ float* CudaLoudnessCalc(int nOfFiles, FILE* fp, char* str)
     free(args);
     cudaFree(filesLoudness);
 
+    //return elapsed times
     static float times[2];
     times[0] = elapsed;
     times[1] = elapsedOverhead;

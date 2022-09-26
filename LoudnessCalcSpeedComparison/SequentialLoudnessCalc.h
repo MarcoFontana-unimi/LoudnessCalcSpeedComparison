@@ -23,7 +23,7 @@ float highPassB[3];
 
 float totalWindowLength;
 
-//for a window apply pre filters and find it's sum of all samples + update peak amplitude value if needed
+//for a window apply pre filters and find it's sum of all samples
 void segmentSquaredByChannel(int channel, float* data, float* out, int segmentIndex, int segmentLength, SF_INFO info)
 {
     //Variables to apply the 1st pre-filter
@@ -43,7 +43,6 @@ void segmentSquaredByChannel(int channel, float* data, float* out, int segmentIn
 
 
     float partialSample = 0;
-    float localMax = 0;
 
     for (int s = channel; s < segmentLength; s += info.channels)
     {
@@ -71,15 +70,7 @@ void segmentSquaredByChannel(int channel, float* data, float* out, int segmentIn
         pastZlow0 = yuleSample;
         pastY0 = tempsample;
 
-        /*
-         * sum of squared samples and localMax update
-         */
         partialSample += tempsample * tempsample;
-
-        if (fabs(data[s]) > localMax)
-        {
-            localMax = fabs(data[s]);
-        }
 
     }
 
@@ -97,6 +88,11 @@ void windowedSquaredMean(int channel, int segmentIndex, float* squaredSegments, 
         + squaredSegments[(segmentIndex * nChannels) + channel]) / totalWindowLength;
 }
 
+/*
+*
+* Sum of window channels weighted as per ITU_R_BS._1770._4 recommendation
+*
+*/
 float weightedSumStereo(int frameIndex, int nChannels, float* squaredMeanByChannel)
 {
 
@@ -172,7 +168,7 @@ float relativeGateCalc(int nWindows, int nChannels, float* blockLoudness, float*
     return -0.691 + 10 * log10(tempTotLoudness / nonSilenceSegments) - 10;
 }
 
-//calc of the float gated loudness as per ITU_R_BS._1770._4 recommendation
+//calc of the double gated loudness as per ITU_R_BS._1770._4 recommendation
 float gatedLoudnessCalc(float relativeGate, int nWindows, int nChannels, float* blockLoudness, float* squaredMeanByChannel)
 {
 
@@ -269,7 +265,6 @@ void calcLoudness(const char* infilename, float* out, int index)
     }
     else if (sfinfo.samplerate == 44100)
     {
-        //filter coeffs for 44100hz sampling rate precalculated for speed
         float headAtemp[2] = { -1.6636551132560202, 0.7125954280732254 };
         memcpy(headA, headAtemp, sizeof(headA));
         float headBtemp[3] = { 1.5308412300503478, -2.650979995154729, 1.1690790799215869 };
@@ -285,6 +280,8 @@ void calcLoudness(const char* infilename, float* out, int index)
     float* squaredSegments = (float*)malloc(sizeof(float) * nOfSegments * sfinfo.channels);
 
     int segNumber = 0;
+
+    //call segmentSquaredByChannel for each 100ms window
     while ((readcount = (int)sf_read_float(infile, sampleBuffer, samplesPerWindow)) == samplesPerWindow)
     {
         for (int i = 0; i < sfinfo.channels; i++)
@@ -298,6 +295,7 @@ void calcLoudness(const char* infilename, float* out, int index)
     int nOfWindows = nOfSegments - 3;
     float* squaredMeanByChannel = (float*)malloc(sizeof(float) * nOfWindows * sfinfo.channels);
 
+    //squared mean of all 400ms window
     for (int i = 3; i < nOfSegments; i++)
     {
         for (int j = 0; j < sfinfo.channels; j++)
@@ -357,7 +355,6 @@ void calcLoudness(const char* infilename, float* out, int index)
     free(squaredMeanByChannel);
 
     out[index] = currLoudness;
-    //printf("%f \n", currLoudness);
 
 }
 
@@ -425,76 +422,10 @@ void sequentialOverheadCalc(const char* infilename, float* out, int index)
     free(sampleBuffer);
     sf_close(infile);
 
-    /*int nOfWindows = nOfSegments - 3;
-    float* squaredMeanByChannel = (float*)malloc(sizeof(float) * nOfWindows * sfinfo.channels);
-
-    for (int i = 3; i < nOfSegments; i++)
-    {
-        for (int j = 0; j < sfinfo.channels; j++)
-        {
-            windowedSquaredMean(j, i, squaredSegments, squaredMeanByChannel, sfinfo.channels);
-        }
-    }
-    free(squaredSegments);
-    sf_close(infile);*/
-
-    /*
-    *
-    * Pre gating loudness of each 400ms window in LUFS as per ITU_R_BS._1770._4 recommendation.
-    * this specific implementation will not work well for channel counts above 5.
-    *
-    */
-
-    //loudness of each 400ms window when all channels are summed
-
-    /*float* blockLoudness = (float*)malloc(sizeof(float) * nOfWindows);
-
-    if (sfinfo.channels > 3 && sfinfo.channels < 6)
-    {
-        for (int i = 0; i < nOfWindows; i++)
-        {
-            int frameIndex = i * sfinfo.channels;
-            float tempSum = weightedSum3To5Channels(frameIndex, sfinfo.channels, squaredMeanByChannel);
-
-            blockLoudness[i] = -0.691 + 10 * log10(tempSum);
-        }
-    }
-    else if (sfinfo.channels >= 6)
-    {
-        for (int i = 0; i < nOfWindows; i++)
-        {
-            int frameIndex = i * sfinfo.channels;
-            float tempSum = weightedSumMoreThan5(frameIndex, sfinfo.channels, squaredMeanByChannel);
-
-            blockLoudness[i] = -0.691 + 10 * log10(tempSum);
-        }
-    }
-    else
-    {
-        for (int i = 0; i < nOfWindows; i++)
-        {
-            int frameIndex = i * sfinfo.channels;
-            float tempSum = weightedSumStereo(frameIndex, sfinfo.channels, squaredMeanByChannel);
-
-            blockLoudness[i] = -0.691 + 10 * log10(tempSum);
-        }
-    }
-
-    float relativeGate = relativeGateCalc(nOfWindows, sfinfo.channels, blockLoudness, squaredMeanByChannel);
-
-    float currLoudness = gatedLoudnessCalc(relativeGate, nOfWindows, sfinfo.channels, blockLoudness, squaredMeanByChannel);
-    free(blockLoudness);
-    free(squaredMeanByChannel);
-
-    out[index] = currLoudness;*/
-    //printf("%f \n", currLoudness);
-
 }
 
 float* SequentialLoudnessCalc(int nOfFiles, FILE* fp, char* str, const char* folder)
 {
-
-    //printf("Analyzing with sequential alghoritm please wait...\n");
 
     float* filesLoudness = (float*)malloc(sizeof(float) * nOfFiles);
     int fileNumber = 0;
@@ -505,11 +436,6 @@ float* SequentialLoudnessCalc(int nOfFiles, FILE* fp, char* str, const char* fol
         char* path = (char*)malloc(strlen(folder) + strlen(str) + 1);
         strcpy(path, folder);
         strcat(path, str);
-        //printf("%s \n", str);
-
-        /*char *path = (char *) malloc(strlen(folder) + strlen(audioNames[i]) + 1);
-        strcpy(path, folder);
-        strcat(path, audioNames[i]);*/
         calcLoudness(path, filesLoudness, fileNumber);
         free(path);
         fileNumber++;
@@ -520,7 +446,7 @@ float* SequentialLoudnessCalc(int nOfFiles, FILE* fp, char* str, const char* fol
     float elapsed = (float)(end - start) / CLOCKS_PER_SEC;
 
     
-    //printf("Measuring file read overhead for sequential alghoritm...\n");
+    //test overhead
     
     clock_t startOverhead = clock();
 
@@ -538,15 +464,10 @@ float* SequentialLoudnessCalc(int nOfFiles, FILE* fp, char* str, const char* fol
 
     clock_t endOverhead = clock();
     float elapsedOverhead = (float)(endOverhead - startOverhead) / CLOCKS_PER_SEC;
-    //printf("\nTime measured: %.3f seconds.\n", elapsed);
-    //printf("Sequential overhead: %.3f seconds.\n\n", elapsedOverhead);
-
-    //float elapsedClean = elapsed - elapsedOverhead;
-
-    //printf("Sequential Time without overhead: %.3f seconds.\n\n", elapsedClean);
 
     free(filesLoudness);
 
+    //return elapsed times
     static float times[2];
     times[0] = elapsed;
     times[1] = elapsedOverhead;
@@ -568,11 +489,6 @@ bool sequentialTestcompliance(int nOfFiles, FILE* fp, char* str, const char* fol
         char* path = (char*)malloc(strlen(folder) + strlen(str) + 1);
         strcpy(path, folder);
         strcat(path, str);
-        //printf("%s \n", str);
-
-        /*char *path = (char *) malloc(strlen(folder) + strlen(audioNames[i]) + 1);
-        strcpy(path, folder);
-        strcat(path, audioNames[i]);*/
         calcLoudness(path, filesLoudness, fileNumber);
         free(path);
         fileNumber++;
