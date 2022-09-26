@@ -619,10 +619,7 @@ void* CudaOverheadCalc(void* arguments)
     free(path);
     sf_close(infile);
 
-    //wait until copyAsync is done
-    //cudaEventSynchronize(copyDone);
     free(audioFileCPU);
-    //cudaEventDestroy(copyDone);
 
     return NULL;
 }
