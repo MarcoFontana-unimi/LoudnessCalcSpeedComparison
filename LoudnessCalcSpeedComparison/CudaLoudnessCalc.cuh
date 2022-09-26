@@ -674,7 +674,7 @@ float* CudaLoudnessCalc(int nOfFiles, FILE* fp, char* str)
 
     float** audioFilePointers = (float**)malloc(sizeof(float*) * nOfFiles);
 
-    printf("Analyzing with CUDA please wait...\n");
+    //printf("Analyzing with CUDA please wait...\n");
 
     //args for each cpu thread
     struct arg_struct* args = (arg_struct*)malloc(sizeof(arg_struct) * nOfFiles);
@@ -730,7 +730,7 @@ float* CudaLoudnessCalc(int nOfFiles, FILE* fp, char* str)
     double elapsed = double(end - start) / CLOCKS_PER_SEC;
 
 
-    printf("Measuring file read overhead for CUDA...\n");
+    //printf("Measuring file read overhead for CUDA...\n");
 
     fileIndex = 0;
 
@@ -764,8 +764,8 @@ float* CudaLoudnessCalc(int nOfFiles, FILE* fp, char* str)
     clock_t endOverhead = clock();
 
     float elapsedOverhead = (float)(endOverhead - startOverhead) / CLOCKS_PER_SEC;
-    printf("\nTime measured: %.3f seconds.\n", elapsed);
-    printf("CUDA overhead: %.3f seconds.\n\n", elapsedOverhead);
+    //printf("\nTime measured: %.3f seconds.\n", elapsed);
+    //printf("CUDA overhead: %.3f seconds.\n\n", elapsedOverhead);
 
     //float elapsedClean = elapsed - elapsedOverhead;
 
@@ -783,6 +783,8 @@ float* CudaLoudnessCalc(int nOfFiles, FILE* fp, char* str)
 
     return times;
 }
+
+
 
 bool cudaTestcompliance(int nOfFiles, FILE* fp, char* str, float* expectedResults)
 {

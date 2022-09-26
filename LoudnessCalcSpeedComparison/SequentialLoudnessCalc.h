@@ -494,7 +494,7 @@ void sequentialOverheadCalc(const char* infilename, float* out, int index)
 float* SequentialLoudnessCalc(int nOfFiles, FILE* fp, char* str, const char* folder)
 {
 
-    printf("Analyzing with sequential alghoritm please wait...\n");
+    //printf("Analyzing with sequential alghoritm please wait...\n");
 
     float* filesLoudness = (float*)malloc(sizeof(float) * nOfFiles);
     int fileNumber = 0;
@@ -520,7 +520,7 @@ float* SequentialLoudnessCalc(int nOfFiles, FILE* fp, char* str, const char* fol
     float elapsed = (float)(end - start) / CLOCKS_PER_SEC;
 
     
-    printf("Measuring file read overhead for sequential alghoritm...\n");
+    //printf("Measuring file read overhead for sequential alghoritm...\n");
     
     clock_t startOverhead = clock();
 
@@ -536,16 +536,16 @@ float* SequentialLoudnessCalc(int nOfFiles, FILE* fp, char* str, const char* fol
     }
     rewind(fp);
 
-    free(filesLoudness);
-
     clock_t endOverhead = clock();
     float elapsedOverhead = (float)(endOverhead - startOverhead) / CLOCKS_PER_SEC;
-    printf("\nTime measured: %.3f seconds.\n", elapsed);
-    printf("Sequential overhead: %.3f seconds.\n\n", elapsedOverhead);
+    //printf("\nTime measured: %.3f seconds.\n", elapsed);
+    //printf("Sequential overhead: %.3f seconds.\n\n", elapsedOverhead);
 
     //float elapsedClean = elapsed - elapsedOverhead;
 
     //printf("Sequential Time without overhead: %.3f seconds.\n\n", elapsedClean);
+
+    free(filesLoudness);
 
     static float times[2];
     times[0] = elapsed;
